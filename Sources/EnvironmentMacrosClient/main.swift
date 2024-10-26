@@ -1,8 +1,17 @@
+//import EnvironmentMacros
+
 import EnvironmentMacros
+import Foundation
 
-let a = 17
-let b = 25
-
-let (result, code) = #stringify(a + b)
-
-print("The value \(result) was produced by the code \"\(code)\"")
+@EnvironmentBodyBuilder
+struct ExampleView {
+    var isProduction: Bool
+    
+    var body: String {
+        if isProduction {
+            "Production Mode"
+        } else {
+            "Development Mode"
+        }
+    }
+}

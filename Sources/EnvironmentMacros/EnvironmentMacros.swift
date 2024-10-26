@@ -1,5 +1,6 @@
 // The Swift Programming Language
 // https://docs.swift.org/swift-book
 
+/// A macro that generates environment condition checking code
 @attached(member, names: arbitrary)
-macro EnvironmentBodyBuilder<T>(_: () -> T) -> T
+public macro EnvironmentBodyBuilder() = #externalMacro(module: "EnvironmentMacrosMacros", type: "EnvironmentBodyBuilderMacro")
