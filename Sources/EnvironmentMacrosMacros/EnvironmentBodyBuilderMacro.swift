@@ -10,58 +10,61 @@ import SwiftSyntax
 import SwiftSyntaxBuilder
 import SwiftSyntaxMacros
 
-public struct EnvironmentBodyBuilderMacro: MemberMacro {
-    
+public struct EnvironmentBodyBuilderMacro: PeerMacro {
     public static func expansion(
         of node: SwiftSyntax.AttributeSyntax,
-        providingMembersOf declaration: some SwiftSyntax.DeclGroupSyntax,
+        providingPeersOf declaration: some SwiftSyntax.DeclSyntaxProtocol,
         in context: some SwiftSyntaxMacros.MacroExpansionContext
-    ) throws -> [SwiftSyntax.DeclSyntax] {
-        // Verify we're attached to a struct
-        guard declaration.is(StructDeclSyntax.self) else {
-            throw MacroError.requiresStruct
+    ) throws -> [DeclSyntax] {
+        guard let funcDecl = declaration.as(FunctionDeclSyntax.self),
+              funcDecl.name.text == "body" else {
+            throw MacroError.requiresBodyFunction
         }
-        
-        return [
-                """
-                private var environmentConditions: [String: String] = [:]
-                """,
-                """
-                func addEnvironmentCondition(key: String, value: String) -> Self {
-                    var copy = self
-                    copy.environmentConditions[key] = value
-                    return copy
-                }
-                """,
-                """
-                func checkEnvironmentConditions() -> Bool {
-                    for (key, value) in environmentConditions {
-                        guard let envValue = ProcessInfo.processInfo.environment[key] else {
-                            return false
-                        }
-                        if value.hasPrefix("NOT_") {
-                            let expectedValue = String(value.dropFirst(4))
-                            if envValue == expectedValue {
-                                return false
-                            }
-                        } else if envValue != value {
-                            return false
-                        }
+                
+        return ["""
+        func processEnvironmentBody<PC: PublishingContextProtocol, BE: BlockElementProtocol>(
+            context: PC,
+            groupType: BE.Type
+        ) -> [BE] where BE: GroupElementProtocol {
+            var elements = [BE]()
+            
+            for element in body(context: context) {
+                var environmentAttributes = [String: String]()
+                
+                // Find environment values
+                let mirror = Mirror(reflecting: self)
+                for child in mirror.children {
+                    if let envKey = child.label?.replacingOccurrences(of: "_", with: ""),
+                       type(of: child.value).self == Environment<Any>.self {
+                        environmentAttributes[envKey.lowercased()] = String(describing: child.value)
                     }
-                    return true
                 }
-                """
-        ].map { DeclSyntax(stringLiteral: $0) }
+                
+                let wrapped = BE(content: {
+                    [element]
+                })
+                
+                // Apply each environment attribute
+                let processedElement = environmentAttributes.reduce(wrapped) { element, attr in
+                    element.addCustomAttribute(name: "data-ignite-env-\\(attr.key)", value: attr.value)
+                }
+                
+                elements.append(processedElement)
+            }
+            
+            return elements
+        }
+        """]
     }
 }
 
 enum MacroError: Error, CustomStringConvertible {
-    case requiresStruct
+    case requiresBodyFunction
     
     var description: String {
         switch self {
-        case .requiresStruct:
-            return "@EnvironmentBodyBuilder can only be applied to a struct"
+        case .requiresBodyFunction:
+            return "@EnvironmentBodyBuilder can only be applied to the body function"
         }
     }
 }
